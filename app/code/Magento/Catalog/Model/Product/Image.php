@@ -15,7 +15,7 @@ use Magento\Catalog\Model\Product\Image\NotLoadInfoImageException;
 use Magento\Framework\App\Filesystem\DirectoryList;
 use Magento\Framework\Image as MagentoImage;
 use Magento\Store\Model\Store;
-use Magento\Framework\Serialize\Serializer\Json;
+use Magento\Framework\Serialize\SerializerInterface;
 
 /**
  * @SuppressWarnings(PHPMD.TooManyFields)
@@ -193,11 +193,11 @@ class Image extends \Magento\Framework\Model\AbstractModel
     private $cachePrefix = 'IMG_INFO';
 
     /**
-     * Json Serializer Instance
+     * serializer Serializer Instance
      *
-     * @var Json
+     * @var SerializerInterface
      */
-    private $json;
+    private $serializer;
 
     /**
      * Constructor
@@ -217,7 +217,7 @@ class Image extends \Magento\Framework\Model\AbstractModel
      * @param array $data
      * @param \Magento\Catalog\Model\View\Asset\ImageFactory|null $viewAssetImageFactory
      * @param \Magento\Catalog\Model\View\Asset\PlaceholderFactory|null $viewAssetPlaceholderFactory
-     * @param Json|null $json
+     * @param SerializerInterface|null $serializer
      * @SuppressWarnings(PHPMD.ExcessiveParameterList)
      * @SuppressWarnings(PHPMD.UnusedLocalVariable)
      */
@@ -237,7 +237,7 @@ class Image extends \Magento\Framework\Model\AbstractModel
         array $data = [],
         \Magento\Catalog\Model\View\Asset\ImageFactory $viewAssetImageFactory = null,
         \Magento\Catalog\Model\View\Asset\PlaceholderFactory $viewAssetPlaceholderFactory = null,
-        Json $json = null
+        SerializerInterface $serializer = null
     ) {
         $this->_storeManager = $storeManager;
         $this->_catalogProductMediaConfig = $catalogProductMediaConfig;
@@ -253,7 +253,7 @@ class Image extends \Magento\Framework\Model\AbstractModel
             ->get(\Magento\Catalog\Model\View\Asset\ImageFactory::class);
         $this->viewAssetPlaceholderFactory = $viewAssetPlaceholderFactory ?: ObjectManager::getInstance()
             ->get(\Magento\Catalog\Model\View\Asset\PlaceholderFactory::class);
-        $this->json = $json ?: ObjectManager::getInstance()->get(Json::class);
+        $this->serializer = $serializer ?: ObjectManager::getInstance()->get(SerializerInterface::class);
     }
 
     /**
@@ -1053,11 +1053,11 @@ class Image extends \Magento\Framework\Model\AbstractModel
         if (!$size) {
             $size = getimagesize($imagePath);
             $this->_cacheManager->save(
-                $this->json->serialize($size),
+                $this->serializer->serialize($size),
                 $key
             );
         } else {
-            $size = $this->json->unserialize($size);
+            $size = $this->serializer->unserialize($size);
         }
         return $size;
     }
