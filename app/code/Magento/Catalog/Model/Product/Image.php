@@ -15,6 +15,7 @@ use Magento\Catalog\Model\Product\Image\NotLoadInfoImageException;
 use Magento\Framework\App\Filesystem\DirectoryList;
 use Magento\Framework\Image as MagentoImage;
 use Magento\Store\Model\Store;
+use Magento\Framework\Serialize\Serializer\Json;
 
 /**
  * @SuppressWarnings(PHPMD.TooManyFields)
@@ -172,6 +173,35 @@ class Image extends \Magento\Framework\Model\AbstractModel
     protected $_storeManager;
 
     /**
+     * @var \Magento\Catalog\Model\View\Asset\ImageFactory
+     */
+    private $viewAssetImageFactory;
+
+    /**
+     * @var \Magento\Catalog\Model\View\Asset\PlaceholderFactory
+     */
+    private $viewAssetPlaceholderFactory;
+
+    /**
+     * @var \Magento\Framework\View\Asset\LocalInterface
+     */
+    private $imageAsset;
+
+    /**
+     * @var string
+     */
+    private $cachePrefix = 'IMG_INFO';
+
+    /**
+     * Json Serializer Instance
+     *
+     * @var Json
+     */
+    private $json;
+
+    /**
+     * Constructor
+     *
      * @param \Magento\Framework\Model\Context $context
      * @param \Magento\Framework\Registry $registry
      * @param \Magento\Store\Model\StoreManagerInterface $storeManager
@@ -185,6 +215,9 @@ class Image extends \Magento\Framework\Model\AbstractModel
      * @param \Magento\Framework\Model\ResourceModel\AbstractResource $resource
      * @param \Magento\Framework\Data\Collection\AbstractDb $resourceCollection
      * @param array $data
+     * @param \Magento\Catalog\Model\View\Asset\ImageFactory|null $viewAssetImageFactory
+     * @param \Magento\Catalog\Model\View\Asset\PlaceholderFactory|null $viewAssetPlaceholderFactory
+     * @param Json|null $json
      * @SuppressWarnings(PHPMD.ExcessiveParameterList)
      * @SuppressWarnings(PHPMD.UnusedLocalVariable)
      */
@@ -201,7 +234,10 @@ class Image extends \Magento\Framework\Model\AbstractModel
         \Magento\Framework\App\Config\ScopeConfigInterface $scopeConfig,
         \Magento\Framework\Model\ResourceModel\AbstractResource $resource = null,
         \Magento\Framework\Data\Collection\AbstractDb $resourceCollection = null,
-        array $data = []
+        array $data = [],
+        \Magento\Catalog\Model\View\Asset\ImageFactory $viewAssetImageFactory = null,
+        \Magento\Catalog\Model\View\Asset\PlaceholderFactory $viewAssetPlaceholderFactory = null,
+        Json $json = null
     ) {
         $this->_storeManager = $storeManager;
         $this->_catalogProductMediaConfig = $catalogProductMediaConfig;
@@ -213,6 +249,11 @@ class Image extends \Magento\Framework\Model\AbstractModel
         $this->_assetRepo = $assetRepo;
         $this->_viewFileSystem = $viewFileSystem;
         $this->_scopeConfig = $scopeConfig;
+        $this->viewAssetImageFactory = $viewAssetImageFactory ?: ObjectManager::getInstance()
+            ->get(\Magento\Catalog\Model\View\Asset\ImageFactory::class);
+        $this->viewAssetPlaceholderFactory = $viewAssetPlaceholderFactory ?: ObjectManager::getInstance()
+            ->get(\Magento\Catalog\Model\View\Asset\PlaceholderFactory::class);
+        $this->json = $json ?: ObjectManager::getInstance()->get(Json::class);
     }
 
     /**
@@ -408,7 +449,7 @@ class Image extends \Magento\Framework\Model\AbstractModel
             return 0;
         }
 
-        $imageInfo = getimagesize($this->_mediaDirectory->getAbsolutePath($file));
+        $imageInfo = $this->getimagesize($this->_mediaDirectory->getAbsolutePath($file));
 
         if (!isset($imageInfo[0]) || !isset($imageInfo[1])) {
             return 0;
@@ -955,11 +996,69 @@ class Image extends \Magento\Framework\Model\AbstractModel
                     $fileInfo = getimagesize($image);
                 }
             }
-            return $fileInfo;
+
+            $imageProperties = $this->getImageSize($image);
+
+            return $imageProperties;
         } finally {
             if (empty($fileInfo)) {
                 throw new NotLoadInfoImageException(__('Can\'t get information about the picture: %1', $image));
             }
         }
+    }
+
+    /**
+     * Retrieve misc params based on all image attributes
+     *
+     * @return array
+     * @SuppressWarnings(PHPMD.NPathComplexity)
+     */
+    private function getMiscParams()
+    {
+        $miscParams = [
+            'image_type' => $this->getDestinationSubdir(),
+            'image_height' => $this->getHeight(),
+            'image_width' => $this->getWidth(),
+            'keep_aspect_ratio' => ($this->_keepAspectRatio ? '' : 'non') . 'proportional',
+            'keep_frame' => ($this->_keepFrame ? '' : 'no') . 'frame',
+            'keep_transparency' => ($this->_keepTransparency ? '' : 'no') . 'transparency',
+            'constrain_only' => ($this->_constrainOnly ? 'do' : 'not') . 'constrainonly',
+            'background' => $this->_rgbToString($this->_backgroundColor),
+            'angle' => $this->_angle,
+            'quality' => $this->_quality,
+        ];
+
+        // if has watermark add watermark params to hash
+        if ($this->getWatermarkFile()) {
+            $miscParams['watermark_file'] = $this->getWatermarkFile();
+            $miscParams['watermark_image_opacity'] = $this->getWatermarkImageOpacity();
+            $miscParams['watermark_position'] = $this->getWatermarkPosition();
+            $miscParams['watermark_width'] = $this->getWatermarkWidth();
+            $miscParams['watermark_height'] = $this->getWatermarkHeight();
+        }
+
+        return $miscParams;
+    }
+
+    /**
+     * Get image size
+     *
+     * @param string $imagePath
+     * @return array
+     */
+    private function getImageSize($imagePath)
+    {
+        $key = $this->cachePrefix  . $imagePath;
+        $size = $this->_cacheManager->load($key);
+        if (!$size) {
+            $size = getimagesize($imagePath);
+            $this->_cacheManager->save(
+                $this->json->serialize($size),
+                $key
+            );
+        } else {
+            $size = $this->json->unserialize($size);
+        }
+        return $size;
     }
 }
