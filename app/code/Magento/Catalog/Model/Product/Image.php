@@ -805,6 +805,7 @@ class Image extends \Magento\Framework\Model\AbstractModel
         $this->_mediaDirectory->delete($directory);
 
         $this->_coreFileStorageDatabase->deleteFolder($this->_mediaDirectory->getAbsolutePath($directory));
+        $this->clearImageInfoFromCache();
     }
 
     /**
@@ -913,7 +914,8 @@ class Image extends \Magento\Framework\Model\AbstractModel
         $imagePath = $this->cachePrefix  . $imagePath;
         $this->_cacheManager->save(
             $this->serializer->serialize($imageInfo),
-            $imagePath
+            $imagePath,
+            [$this->cachePrefix]
         );
     }
 
@@ -932,5 +934,15 @@ class Image extends \Magento\Framework\Model\AbstractModel
         } else {
             return $this->serializer->unserialize($cacheData);
         }
+    }
+
+    /**
+     * Clear image data from cache
+     *
+     * @return void
+     */
+    private function clearImageInfoFromCache()
+    {
+        $this->_cacheManager->clean([$this->cachePrefix]);
     }
 }
